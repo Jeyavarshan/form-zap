@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FormIntegration {
+  id                      String           @id @default(uuid())
+  workspaceId             String
+  workspacePublicId       String
+  formId                  String
+  formVersionId           String
+  formName                String
+  provider                String
+  flowId                  String?
+  flowJson                Json?
+  screenCount             Int              @default(1)
+  webhookUrl              String
+  ylyncWebhookUrl         String
+  publishStatus           String           @default("draft")
+  connectionStatus        String           @default("not_configured")
+  lastResponseAt          DateTime?
+  createdInFormZap        Boolean          @default(true)
+  customerDatabaseChanged Boolean          @default(false)
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  flowEvents              FlowEvent[]
+  submissions             FlowSubmission[]
+
+  @@unique([workspaceId, formId])
+  @@unique([workspacePublicId, provider, flowId])
+  @@index([workspacePublicId, provider])
+  @@index([workspacePublicId, flowId])
+}
+
+model FlowSend {
+  id                String   @id @default(uuid())
+  flowToken         String   @unique
+  workspaceId       String
+  workspacePublicId String
+  formId            String
+  formName          String
+  provider          String
+  flowId            String
+  recipientPhone    String
+  ylyncWebhookUrl   String
+  status            String   @default("poc_send_created")
+  createdAt         DateTime @default(now())
+
+  @@index([workspaceId, formId])
+  @@index([workspacePublicId, provider, flowId])
+}
+
+model WebhookEvent {
+  id                String      @id @default(uuid())
+  workspacePublicId String
+  provider          String
+  receivedAt        DateTime    @default(now())
+  processingStatus  String      @default("received")
+  rawPayload        Json
+  eventCount        Int         @default(0)
+  mappedCount       Int         @default(0)
+  unmappedCount     Int         @default(0)
+  errorMessage      String?
+  flowEvents        FlowEvent[]
+
+  @@index([workspacePublicId, processingStatus, receivedAt])
+  @@index([provider, receivedAt])
+}
+
+model FlowEvent {
+  id                String           @id @default(uuid())
+  type              String
+  provider          String
+  workspacePublicId String
+  rawEventId        String
+  rawEvent          WebhookEvent     @relation(fields: [rawEventId], references: [id], onDelete: Cascade)
+  messageId         String?
+  flowId            String?
+  flowToken         String?
+  contactPhone      String?
+  contactName       String?
+  answers           Json
+  occurredAt        DateTime
+  formIntegrationId String?
+  formIntegration   FormIntegration? @relation(fields: [formIntegrationId], references: [id], onDelete: SetNull)
+  formId            String?
+  mapped            Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  submission        FlowSubmission?
+
+  @@index([workspacePublicId, type, occurredAt])
+  @@index([formIntegrationId, occurredAt])
+  @@index([flowToken])
+  @@index([flowId])
+}
+
+model FlowSubmission {
+  id                String          @id @default(uuid())
+  idempotencyKey    String          @unique
+  flowEventId       String          @unique
+  flowEvent         FlowEvent       @relation(fields: [flowEventId], references: [id], onDelete: Cascade)
+  formIntegrationId String
+  formIntegration   FormIntegration @relation(fields: [formIntegrationId], references: [id], onDelete: Cascade)
+  workspaceId       String
+  workspacePublicId String
+  formId            String
+  formName          String
+  provider          String
+  flowId            String?
+  flowToken         String?
+  contactPhone      String?
+  contactName       String?
+  answers           Json
+  submittedAt       DateTime
+  createdAt         DateTime        @default(now())
+
+  @@index([workspaceId, formId, submittedAt])
+  @@index([workspacePublicId, provider, submittedAt])
+}
