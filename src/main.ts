@@ -21,6 +21,7 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
+      'Authorization',
       'x-webhook-secret',
       'x-flowform-secret',
       'x-flowform-timestamp',
