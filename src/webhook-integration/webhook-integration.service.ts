@@ -850,7 +850,8 @@ export class WebhookIntegrationService {
             this.clean(responseJson.flow_token as string);
           const flowId =
             this.clean(nfmReply.flow_id as string) ||
-            this.clean(responseJson.flow_id as string);
+            this.clean(responseJson.flow_id as string) ||
+            this.clean(responseJson.form_id as string);
           const answers = this.stripRoutingFields(responseJson);
 
           events.push({
@@ -1052,6 +1053,24 @@ export class WebhookIntegrationService {
 
       if (fallbackForm) {
         return this.toFormRecord(fallbackForm);
+      }
+    }
+
+    // Fallback: match by form_id stored in the answers (e.g. from WhatsApp Flow response_json)
+    const formIdFromAnswers =
+      this.clean(event.answers?.form_id as string) ||
+      this.clean(event.answers?.formId as string);
+
+    if (formIdFromAnswers) {
+      const formByFormId = await this.prisma.formIntegration.findFirst({
+        where: {
+          workspacePublicId: event.workspacePublicId,
+          formId: formIdFromAnswers,
+        },
+      });
+
+      if (formByFormId) {
+        return this.toFormRecord(formByFormId);
       }
     }
 
@@ -1353,12 +1372,14 @@ export class WebhookIntegrationService {
   }
 
   private stripRoutingFields(value: Record<string, unknown>) {
-    const { flow_id, flowId, flow_token, flowToken, ...answers } = value;
+    const { flow_id, flowId, flow_token, flowToken, form_id, formId, ...answers } = value;
 
     void flow_id;
     void flowId;
     void flow_token;
     void flowToken;
+    void form_id;
+    void formId;
 
     return answers;
   }
