@@ -50,10 +50,10 @@ export class AiBuilderService {
     }
 
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 4096,
+        temperature: 0.4,
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json',
       },
     });
@@ -61,6 +61,9 @@ export class AiBuilderService {
     const systemPrompt = this.buildSystemPrompt(prompt, settings);
     const result = await model.generateContent(systemPrompt);
     const responseText = result.response.text();
+    console.log('--- RAW GEMINI RESPONSE ---');
+    console.log(responseText);
+    console.log('---------------------------');
 
     return this.parseAndValidateResponse(responseText);
   }
@@ -135,17 +138,20 @@ IMPORTANT: The flowJson must be a complete, valid WhatsApp Flow JSON. Generate r
 
   private parseAndValidateResponse(responseText: string): AiGenerationResult {
     let parsed: AiGenerationResult;
+    let cleaned = '';
 
     try {
       // Strip any accidental markdown fences if present
-      const cleaned = responseText
+      cleaned = responseText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
         .replace(/```\s*$/i, '')
         .trim();
 
       parsed = JSON.parse(cleaned) as AiGenerationResult;
-    } catch {
+    } catch (e) {
+      console.error('JSON Parse Error:', e);
+      console.error('Cleaned string that failed to parse:', cleaned || responseText);
       throw new InternalServerErrorException('AI returned an invalid response. Please try again.');
     }
 
