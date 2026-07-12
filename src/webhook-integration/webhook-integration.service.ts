@@ -1056,7 +1056,6 @@ export class WebhookIntegrationService {
       }
     }
 
-    // Fallback: match by form_id stored in the answers (e.g. from WhatsApp Flow response_json)
     const formIdFromAnswers =
       this.clean(event.answers?.form_id as string) ||
       this.clean(event.answers?.formId as string);
