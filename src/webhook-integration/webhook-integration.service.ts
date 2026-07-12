@@ -174,7 +174,7 @@ const DEFAULT_ANSWERS = {
 
 @Injectable()
 export class WebhookIntegrationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   getWebhookConfig(inputWorkspacePublicId?: string) {
     const workspacePublicId =
@@ -276,14 +276,14 @@ export class WebhookIntegrationService {
     );
     const duplicate = flowId
       ? await this.prisma.formIntegration.findUnique({
-          where: {
-            workspacePublicId_provider_flowId: {
-              workspacePublicId,
-              provider,
-              flowId,
-            },
+        where: {
+          workspacePublicId_provider_flowId: {
+            workspacePublicId,
+            provider,
+            flowId,
           },
-        })
+        },
+      })
       : null;
 
     if (duplicate && duplicate.id !== existing?.id) {
@@ -294,8 +294,8 @@ export class WebhookIntegrationService {
 
     const ylyncWebhookUrl = this.normalizeUrl(
       input.ylyncWebhookUrl ||
-        existing?.ylyncWebhookUrl ||
-        this.resolveYlyncWebhookUrl(),
+      existing?.ylyncWebhookUrl ||
+      this.resolveYlyncWebhookUrl(),
     );
     const flowJson =
       input.flowJson !== undefined
@@ -907,8 +907,8 @@ export class WebhookIntegrationService {
     return {
       type:
         root.event_type === 'flow.completed' ||
-        root.event === 'flow_completed' ||
-        root.type === 'flow.completed'
+          root.event === 'flow_completed' ||
+          root.type === 'flow.completed'
           ? 'flow.completed'
           : 'provider.event',
       provider,
