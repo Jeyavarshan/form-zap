@@ -4,15 +4,11 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  Prisma,
-  type FlowEvent as PrismaFlowEvent,
-  type FlowSend as PrismaFlowSend,
-  type FlowSubmission as PrismaFlowSubmission,
-  type FormIntegration as PrismaFormIntegration,
-} from '@prisma/client';
+import { Prisma, type FlowEvent as PrismaFlowEvent, type FlowSend as PrismaFlowSend, type FlowSubmission as PrismaFlowSubmission, type FormIntegration as PrismaFormIntegration } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
+
 
 export type FlowPublishStatus =
   | 'draft'
@@ -174,7 +170,11 @@ const DEFAULT_ANSWERS = {
 
 @Injectable()
 export class WebhookIntegrationService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleSheetsService: GoogleSheetsService,
+  ) { }
+
 
   getWebhookConfig(inputWorkspacePublicId?: string) {
     const workspacePublicId =
@@ -260,6 +260,21 @@ export class WebhookIntegrationService {
     const existing = await this.prisma.formIntegration.findUnique({
       where: { workspaceId_formId: { workspaceId, formId } },
     });
+
+    if (!existing) {
+      const ws = await this.prisma.workspace.findUnique({ where: { publicId: workspacePublicId } });
+      if (ws) {
+        const plan = await this.prisma.plan.findUnique({ where: { name: ws.planName } });
+        const maxFlows = plan?.maxFlows ?? 1;
+        if (ws.flowsCount >= maxFlows) {
+          throw new BadRequestException(`Flow limit reached (${maxFlows}). Please upgrade your plan.`);
+        }
+        await this.prisma.workspace.update({
+          where: { publicId: workspacePublicId },
+          data: { flowsCount: { increment: 1 } },
+        });
+      }
+    }
     const flowId = this.clean(input.flowId) || existing?.flowId || '';
     const requestedPublishStatus = this.normalizePublishStatus(
       input.publishStatus,
@@ -472,6 +487,23 @@ export class WebhookIntegrationService {
         workspacePublicId,
         rawEvent.id,
       );
+
+      // Enforce response limit
+      if (normalizedEvents.length > 0) {
+        const ws = await this.prisma.workspace.findUnique({ where: { publicId: workspacePublicId } });
+        if (ws) {
+          const plan = await this.prisma.plan.findUnique({ where: { name: ws.planName } });
+          const maxResponses = plan?.maxResponses ?? 100;
+          if (ws.responsesCount >= maxResponses) {
+            throw new BadRequestException(`Monthly response limit reached (${maxResponses}). Please upgrade your plan.`);
+          }
+          await this.prisma.workspace.update({
+            where: { publicId: workspacePublicId },
+            data: { responsesCount: { increment: normalizedEvents.length } },
+          });
+        }
+      }
+
       const processedEvents: FlowEventRecord[] = [];
 
       for (const event of normalizedEvents) {
@@ -1003,6 +1035,17 @@ export class WebhookIntegrationService {
         submittedAt: this.toDate(event.occurredAt),
       },
     });
+    
+    // Attempt to append to Google Sheets
+    // The numberId is not explicitly tied to the submission but we can pass a dummy string 
+    // or let googleSheetsService search by formId instead. 
+    // In google-sheets.service.ts, we updated appendRow to search just by formId and workspacePublicId.
+    this.googleSheetsService.appendRow(
+      form.workspacePublicId, 
+      form.formId, 
+      '', 
+      [submission.id, submission.contactPhone || 'Unknown', submission.submittedAt.toISOString(), JSON.stringify(event.answers)]
+    ).catch(e => console.error('Error appending to Google Sheets', e));
 
     return this.toSubmissionRecord(submission);
   }

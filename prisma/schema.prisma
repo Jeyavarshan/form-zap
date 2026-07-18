@@ -121,3 +121,99 @@ model FlowSubmission {
   @@index([workspaceId, formId, submittedAt])
   @@index([workspacePublicId, provider, submittedAt])
 }
+
+model Workspace {
+  id               String   @id @default(uuid())
+  name             String   @default("My Workspace")
+  publicId         String   @unique
+  planName         String   @default("Free")
+  responsesCount   Int      @default(0)
+  flowsCount       Int      @default(0)
+  aiCreditsCount   Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subscriptions    Subscription[]
+  payments         PaymentTransaction[]
+  googleCredential WorkspaceGoogleCredential?
+}
+
+
+model Plan {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  amount       Float
+  currency     String   @default("INR")
+  interval     String   @default("MONTHLY")
+  maxFlows     Int      @default(1)
+  maxResponses Int      @default(100)
+  aiCredits    Int      @default(3)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  planId             String
+  status             String   @default("INACTIVE")
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan               Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments           PaymentTransaction[]
+}
+
+model PaymentTransaction {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  subscriptionId    String?
+  amount            Float
+  currency          String
+  razorpayOrderId   String   @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+  status            String   @default("PENDING")
+  errorReason       String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+}
+
+model WorkspaceGoogleCredential {
+  id                String   @id @default(uuid())
+  workspaceId       String   @unique
+  workspacePublicId String   @unique
+  accessToken       String
+  refreshToken      String
+  expiryDate        BigInt?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model GoogleSheetConnection {
+  id                String   @id @default(uuid())
+  workspacePublicId String
+  formId            String
+  formName          String
+  numberId          String
+  numberLabel       String
+  spreadsheetId     String
+  spreadsheetUrl    String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([workspacePublicId, formId])
+  @@unique([workspacePublicId, formId, numberId])
+}
