@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { WalletService } from '../wallet/wallet.service';
 
 export interface AiGenerationSettings {
   formType?: 'Static' | 'Dynamic';
@@ -12,6 +13,7 @@ export interface AiGenerationSettings {
 }
 
 export interface AiGenerationInput {
+  workspaceId: string;
   prompt: string;
   settings?: AiGenerationSettings;
 }
@@ -34,7 +36,7 @@ export interface AiGenerationResult {
 export class AiBuilderService {
   private readonly genAI: GoogleGenerativeAI;
 
-  constructor() {
+  constructor(private readonly walletService: WalletService) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new InternalServerErrorException('GEMINI_API_KEY is not configured.');
@@ -61,6 +63,13 @@ export class AiBuilderService {
     const systemPrompt = this.buildSystemPrompt(prompt, settings);
     const result = await model.generateContent(systemPrompt);
     const responseText = result.response.text();
+    
+    const usage = result.response.usageMetadata;
+    const inputTokens = usage?.promptTokenCount || 0;
+    const outputTokens = usage?.candidatesTokenCount || 0;
+    
+    await this.walletService.deductCredits(input.workspaceId, inputTokens, outputTokens, { action: 'ai_form_generation' });
+
     console.log('--- RAW GEMINI RESPONSE ---');
     console.log(responseText);
     console.log('---------------------------');

@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { GoogleSheetsService } from './google-sheets.service';
+import { PlanLimitsGuard } from '../subscription/guards/plan-limits.guard';
+import { CheckPlanLimit } from '../subscription/guards/plan-limits.decorator';
 import type { Response } from 'express';
 
 @Controller('google-sheets')
@@ -7,6 +9,8 @@ export class GoogleSheetsController {
   constructor(private readonly googleSheetsService: GoogleSheetsService) {}
 
   @Get('auth/url')
+  @UseGuards(PlanLimitsGuard)
+  @CheckPlanLimit('google_sheets')
   getAuthUrl(@Query('workspacePublicId') workspacePublicId: string) {
     const url = this.googleSheetsService.getAuthUrl(workspacePublicId);
     return { url };
@@ -36,6 +40,8 @@ export class GoogleSheetsController {
   }
 
   @Post('connections')
+  @UseGuards(PlanLimitsGuard)
+  @CheckPlanLimit('google_sheets')
   createConnection(@Body() body: { workspacePublicId: string, formId: string, formName: string, numberId: string, numberLabel: string }) {
     return this.googleSheetsService.createConnection(
       body.workspacePublicId,

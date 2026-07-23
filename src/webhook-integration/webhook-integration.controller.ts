@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { WebhookIntegrationService } from './webhook-integration.service';
+import { PlanLimitsGuard } from '../subscription/guards/plan-limits.guard';
+import { CheckPlanLimit } from '../subscription/guards/plan-limits.decorator';
 import type {
   GenerateFlowTokenInput,
   SaveFormMappingInput,
@@ -39,6 +41,8 @@ export class WebhookIntegrationController {
   }
 
   @Post('forms')
+  @UseGuards(PlanLimitsGuard)
+  @CheckPlanLimit('active_flows_limit')
   saveFormMapping(@Body() body: SaveFormMappingInput) {
     return this.webhookIntegrationService.saveFormMapping(body);
   }

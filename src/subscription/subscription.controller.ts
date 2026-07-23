@@ -10,6 +10,11 @@ export class SubscriptionController {
     return this.subscriptionService.getPlans();
   }
 
+  @Get('status')
+  getStatus(@Headers('x-workspace-id') workspaceId: string) {
+    return this.subscriptionService.getStatus(workspaceId);
+  }
+
   @Post('create-order')
   createOrder(@Body('workspaceId') workspaceId: string, @Body('planId') planId: string) {
     return this.subscriptionService.createOrder(workspaceId, planId);

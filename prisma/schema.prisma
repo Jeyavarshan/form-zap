@@ -137,6 +137,7 @@ model Workspace {
   subscriptions    Subscription[]
   payments         PaymentTransaction[]
   googleCredential WorkspaceGoogleCredential?
+  walletTransactions WalletTransaction[]
 }
 
 
@@ -146,9 +147,13 @@ model Plan {
   amount       Float
   currency     String   @default("INR")
   interval     String   @default("MONTHLY")
-  maxFlows     Int      @default(1)
-  maxResponses Int      @default(100)
+  maxFlows     Int      @default(3)
+  maxResponses Int      @default(200)
   aiCredits    Int      @default(3)
+  maxApiKeys   Int      @default(0)
+  hasGoogleSheets Boolean @default(false)
+  hasAdvancedFlow Boolean @default(false)
+  hasWhiteLabel   Boolean @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
@@ -216,4 +221,18 @@ model GoogleSheetConnection {
 
   @@index([workspacePublicId, formId])
   @@unique([workspacePublicId, formId, numberId])
+}
+
+model WalletTransaction {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  type            String   // 'plan_grant', 'topup', 'consume', 'refund', 'expire'
+  amount          Int      // positive for topup/grant, negative for consume/expire
+  metadata        Json?    // For tracking Razorpay orderId or generation metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@index([workspaceId, type, createdAt])
 }

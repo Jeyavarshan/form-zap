@@ -2,13 +2,26 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import Razorpay from 'razorpay';
 import * as crypto from 'crypto';
+import { WalletService } from '../wallet/wallet.service';
+
+const PACKS: Record<string, { amount: number, credits: number, currency: string }> = {
+  pack_30_inr: { amount: 149, credits: 30, currency: 'INR' },
+  pack_30_usd: { amount: 2, credits: 30, currency: 'USD' },
+  pack_100_inr: { amount: 399, credits: 100, currency: 'INR' },
+  pack_100_usd: { amount: 5, credits: 100, currency: 'USD' },
+  pack_250_inr: { amount: 899, credits: 250, currency: 'INR' },
+  pack_250_usd: { amount: 11, credits: 250, currency: 'USD' },
+};
 
 @Injectable()
 export class SubscriptionService {
   private readonly razorpay: Razorpay;
   private readonly logger = new Logger(SubscriptionService.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly walletService: WalletService
+  ) {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
@@ -28,6 +41,57 @@ export class SubscriptionService {
     });
   }
 
+  async getStatus(workspaceId: string) {
+    if (!workspaceId) throw new BadRequestException('Workspace ID required');
+    await this.walletService.refreshPlanCreditsIfNeeded(workspaceId);
+
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          include: { plan: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    if (!workspace) throw new NotFoundException('Workspace not found');
+
+    const wallet = await this.walletService.getBalance(workspaceId);
+    
+    // Usage stats
+    const activeFlows = await this.prisma.formIntegration.count({ where: { workspaceId } });
+    const monthlyResponses = await this.prisma.flowSubmission.count({ 
+      where: { workspaceId, submittedAt: { gte: new Date(new Date().setDate(1)) } } // Simple current month logic
+    });
+    // Assuming API Keys are not modeled explicitly yet, returning 0
+    const apiKeys = 0;
+
+    let planId = 'free';
+    let billingCycle = 'monthly';
+
+    if (workspace.subscriptions.length > 0) {
+      const activeSub = workspace.subscriptions[0];
+      const parsedPlanId = activeSub.plan.name.split('_')[0]; // e.g. "spark_monthly_inr" -> "spark"
+      planId = parsedPlanId;
+      billingCycle = activeSub.plan.interval.toLowerCase();
+    }
+
+    return {
+      planId,
+      billingCycle,
+      planCreditsRemaining: wallet.planCreditsRemaining,
+      purchasedCreditsBalance: wallet.purchasedCreditsBalance,
+      usageStats: {
+        activeFlows,
+        monthlyResponses,
+        apiKeys
+      }
+    };
+  }
+
   async createOrder(workspaceId: string, planId: string) {
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -37,24 +101,38 @@ export class SubscriptionService {
       throw new NotFoundException('Workspace not found');
     }
 
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: planId },
-    });
+    let billingAmount = 0;
+    let currency = 'INR';
+    let isPack = false;
+    let interval = 'ONETIME';
 
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
+    if (PACKS[planId]) {
+      const pack = PACKS[planId];
+      billingAmount = pack.amount;
+      currency = pack.currency;
+      isPack = true;
+    } else {
+      const plan = await this.prisma.plan.findUnique({
+        where: { name: planId },
+      });
+
+      if (!plan) {
+        throw new NotFoundException('Plan or pack not found');
+      }
+
+      billingAmount = plan.amount;
+      currency = plan.currency;
+      interval = plan.interval;
     }
-
-    const billingAmount = plan.amount;
 
     const options = {
       amount: Math.round(billingAmount * 100), // amount in the smallest currency unit
-      currency: plan.currency || 'INR',
+      currency,
       receipt: `receipt_${Date.now()}`,
       notes: {
         workspaceId,
-        planId: plan.id,
-        planName: plan.name,
+        planId,
+        isPack: isPack ? 'true' : 'false',
       },
     };
 
@@ -65,18 +143,19 @@ export class SubscriptionService {
         data: {
           workspaceId,
           amount: billingAmount,
-          currency: plan.currency,
+          currency,
           razorpayOrderId: order.id,
           status: 'PENDING',
           metadata: {
-            planId: plan.id,
-            interval: plan.interval,
+            planId,
+            interval,
+            isPack,
           },
         },
       });
 
       return order;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error creating Razorpay order: ${error?.message || error}`, error?.stack);
       throw new BadRequestException('Failed to create payment order');
     }
@@ -122,7 +201,7 @@ export class SubscriptionService {
         throw new NotFoundException('Transaction not found');
       }
 
-      if (transaction.status === 'SUCCESS' && transaction.subscriptionId) {
+      if (transaction.status === 'SUCCESS') {
         return transaction;
       }
 
@@ -137,72 +216,85 @@ export class SubscriptionService {
 
       const metadata = transaction.metadata as any;
       const planId = metadata.planId;
+      const isPack = metadata.isPack;
 
-      const plan = await tx.plan.findUnique({
-        where: { id: planId },
-      });
+      if (isPack) {
+        // Handle Pack Topup
+        const pack = PACKS[planId];
+        await this.walletService.topup(transaction.workspaceId, pack.credits, { orderId });
+      } else {
+        // Handle Subscription
+        const plan = await tx.plan.findUnique({
+          where: { name: planId },
+        });
 
-      if (!plan) {
-        throw new NotFoundException('Plan not found for transaction');
+        if (!plan) {
+          throw new NotFoundException('Plan not found for transaction');
+        }
+
+        const start = new Date();
+        const end = new Date();
+        if (plan.interval === 'MONTHLY') {
+          end.setMonth(end.getMonth() + 1);
+        } else if (plan.interval === 'ANNUAL') {
+          end.setFullYear(end.getFullYear() + 1);
+        } else if (plan.interval === 'QUARTERLY') {
+          end.setMonth(end.getMonth() + 3);
+        }
+
+        const existingSubscription = await tx.subscription.findFirst({
+          where: { workspaceId: transaction.workspaceId },
+          orderBy: [
+            { currentPeriodEnd: 'desc' },
+            { updatedAt: 'desc' },
+          ],
+        });
+
+        const subscription = await tx.subscription.upsert({
+          where: {
+            id: existingSubscription?.id || 'none',
+          },
+          update: {
+            planId: plan.id,
+            status: 'ACTIVE',
+            currentPeriodStart: start,
+            currentPeriodEnd: end,
+            updatedAt: new Date(),
+          },
+          create: {
+            workspaceId: transaction.workspaceId,
+            planId: plan.id,
+            status: 'ACTIVE',
+            currentPeriodStart: start,
+            currentPeriodEnd: end,
+          },
+        });
+
+        await tx.subscription.updateMany({
+          where: {
+            workspaceId: transaction.workspaceId,
+            id: { not: subscription.id },
+            status: 'ACTIVE',
+          },
+          data: {
+            status: 'INACTIVE',
+            updatedAt: new Date(),
+          },
+        });
+
+        await tx.paymentTransaction.update({
+          where: { id: transaction.id },
+          data: { subscriptionId: subscription.id },
+        });
+
+        await tx.workspace.update({
+          where: { id: transaction.workspaceId },
+          data: { planName: plan.name },
+        });
+        
+        // Grant credits for new plan
+        await this.walletService.refreshPlanCreditsIfNeeded(transaction.workspaceId);
       }
-
-      const start = new Date();
-      const end = new Date();
-      if (plan.interval === 'MONTHLY') {
-        end.setMonth(end.getMonth() + 1);
-      } else if (plan.interval === 'ANNUAL') {
-        end.setFullYear(end.getFullYear() + 1);
-      }
-
-      const existingSubscription = await tx.subscription.findFirst({
-        where: { workspaceId: transaction.workspaceId },
-        orderBy: [
-          { currentPeriodEnd: 'desc' },
-          { updatedAt: 'desc' },
-        ],
-      });
-
-      const subscription = await tx.subscription.upsert({
-        where: {
-          id: existingSubscription?.id || 'none',
-        },
-        update: {
-          planId: plan.id,
-          status: 'ACTIVE',
-          currentPeriodStart: start,
-          currentPeriodEnd: end,
-          updatedAt: new Date(),
-        },
-        create: {
-          workspaceId: transaction.workspaceId,
-          planId: plan.id,
-          status: 'ACTIVE',
-          currentPeriodStart: start,
-          currentPeriodEnd: end,
-        },
-      });
-
-      await tx.subscription.updateMany({
-        where: {
-          workspaceId: transaction.workspaceId,
-          id: { not: subscription.id },
-          status: 'ACTIVE',
-        },
-        data: {
-          status: 'INACTIVE',
-          updatedAt: new Date(),
-        },
-      });
-
-      await tx.paymentTransaction.update({
-        where: { id: transaction.id },
-        data: { subscriptionId: subscription.id },
-      });
-
-      await tx.workspace.update({
-        where: { id: transaction.workspaceId },
-        data: { planName: plan.name },
-      });
 
       return updatedTransaction;
     });

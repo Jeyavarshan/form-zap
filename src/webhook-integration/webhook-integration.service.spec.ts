@@ -164,7 +164,10 @@ describe('WebhookIntegrationService', () => {
   let service: WebhookIntegrationService;
 
   beforeEach(() => {
-    service = new WebhookIntegrationService(createPrismaMock() as never);
+    service = new WebhookIntegrationService(
+      createPrismaMock() as never,
+      {} as never // mock GoogleSheetsService
+    );
   });
 
   it('stores a created form as a draft before a Flow ID exists', async () => {
