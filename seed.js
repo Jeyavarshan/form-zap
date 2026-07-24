@@ -57,25 +57,25 @@ async function main() {
   }
 
   await prisma.workspace.upsert({
-    where: { publicId: 'workspace_poc' },
+    where: { publicId: 'ws_demo_1' },
     update: { planName: 'free_monthly_inr' },
     create: {
-      id: 'workspace_poc',
-      publicId: 'workspace_poc',
-      name: 'Default Workspace',
+      id: 'ws_demo_1',
+      publicId: 'ws_demo_1',
+      name: 'Demo Workspace',
       planName: 'free_monthly_inr',
       aiCreditsCount: 3,
     },
   });
 
   const existingGrant = await prisma.walletTransaction.findFirst({
-    where: { workspaceId: 'workspace_poc', type: 'plan_grant' },
+    where: { workspaceId: 'ws_demo_1', type: 'plan_grant' },
   });
 
   if (!existingGrant) {
     await prisma.walletTransaction.create({
       data: {
-        workspaceId: 'workspace_poc',
+        workspaceId: 'ws_demo_1',
         type: 'plan_grant',
         amount: 3,
         metadata: { isLifetime: true },

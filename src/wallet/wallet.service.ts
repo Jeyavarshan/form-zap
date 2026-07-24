@@ -13,7 +13,7 @@ export class WalletService {
   constructor(private readonly prisma: PrismaService) {}
 
   async ensureWorkspace(workspaceIdOrPublicId?: string) {
-    const rawId = (workspaceIdOrPublicId || '').trim() || 'default_workspace';
+    const rawId = (workspaceIdOrPublicId || '').trim() || `ws_${Date.now()}`;
 
     let workspace = await this.prisma.workspace.findFirst({
       where: {
