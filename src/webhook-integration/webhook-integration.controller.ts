@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Headers, UseGuards } from '@nestjs/common';
 import { WebhookIntegrationService } from './webhook-integration.service';
 import { PlanLimitsGuard } from '../subscription/guards/plan-limits.guard';
 import { CheckPlanLimit } from '../subscription/guards/plan-limits.decorator';
@@ -20,24 +20,55 @@ export class WebhookIntegrationController {
     return this.webhookIntegrationService.getWebhookConfig(workspacePublicId);
   }
 
+  private extractWsId(headers: Record<string, string>, queryWsId?: string, queryPublicId?: string): string | undefined {
+    return (
+      headers['x-workspace-id'] ||
+      headers['x-workspace-public-id'] ||
+      headers['X-Workspace-Id'] ||
+      headers['X-Workspace-Public-Id'] ||
+      queryWsId ||
+      queryPublicId
+    );
+  }
+
   @Get('forms')
-  listForms() {
-    return this.webhookIntegrationService.listForms();
+  listForms(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listForms(wsId);
   }
 
   @Get('webhook-events')
-  listWebhookEvents() {
-    return this.webhookIntegrationService.listWebhookEvents();
+  listWebhookEvents(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listWebhookEvents(wsId);
   }
 
   @Get('flow-events')
-  listFlowEvents() {
-    return this.webhookIntegrationService.listFlowEvents();
+  listFlowEvents(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listFlowEvents(wsId);
   }
 
   @Get('submissions')
-  listSubmissions() {
-    return this.webhookIntegrationService.listSubmissions();
+  listSubmissions(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listSubmissions(wsId);
   }
 
   @Post('forms')
@@ -56,8 +87,13 @@ export class WebhookIntegrationController {
   }
 
   @Get('flow-sends')
-  listSends() {
-    return this.webhookIntegrationService.listSends();
+  listSends(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listSends(wsId);
   }
 
   @Post('forms/:formId/send')
@@ -85,8 +121,13 @@ export class WebhookIntegrationController {
   }
 
   @Get('flow-tokens')
-  listFlowTokens() {
-    return this.webhookIntegrationService.listFlowTokens();
+  listFlowTokens(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = this.extractWsId(headers, queryWsId, queryPublicId);
+    return this.webhookIntegrationService.listFlowTokens(wsId);
   }
 
   @Post('flow-tokens')

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, Headers, Res, UseGuards } from '@nestjs/common';
 import { GoogleSheetsService } from './google-sheets.service';
 import { PlanLimitsGuard } from '../subscription/guards/plan-limits.guard';
 import { CheckPlanLimit } from '../subscription/guards/plan-limits.decorator';
@@ -8,10 +8,25 @@ import type { Response } from 'express';
 export class GoogleSheetsController {
   constructor(private readonly googleSheetsService: GoogleSheetsService) {}
 
+  private extractWsId(headers: Record<string, string>, queryWsId?: string): string {
+    return (
+      queryWsId ||
+      headers['x-workspace-public-id'] ||
+      headers['x-workspace-id'] ||
+      headers['X-Workspace-Public-Id'] ||
+      headers['X-Workspace-Id'] ||
+      ''
+    );
+  }
+
   @Get('auth/url')
   @UseGuards(PlanLimitsGuard)
   @CheckPlanLimit('google_sheets')
-  getAuthUrl(@Query('workspacePublicId') workspacePublicId: string) {
+  getAuthUrl(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspacePublicId') queryWsId?: string,
+  ) {
+    const workspacePublicId = this.extractWsId(headers, queryWsId);
     const url = this.googleSheetsService.getAuthUrl(workspacePublicId);
     return { url };
   }
@@ -25,26 +40,42 @@ export class GoogleSheetsController {
   }
 
   @Get('auth/status')
-  getAuthStatus(@Query('workspacePublicId') workspacePublicId: string) {
+  getAuthStatus(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspacePublicId') queryWsId?: string,
+  ) {
+    const workspacePublicId = this.extractWsId(headers, queryWsId);
     return this.googleSheetsService.getAuthStatus(workspacePublicId);
   }
 
   @Delete('auth')
-  disconnectAuth(@Query('workspacePublicId') workspacePublicId: string) {
+  disconnectAuth(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspacePublicId') queryWsId?: string,
+  ) {
+    const workspacePublicId = this.extractWsId(headers, queryWsId);
     return this.googleSheetsService.disconnectAuth(workspacePublicId);
   }
 
   @Get('connections')
-  listConnections(@Query('workspacePublicId') workspacePublicId: string) {
+  listConnections(
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspacePublicId') queryWsId?: string,
+  ) {
+    const workspacePublicId = this.extractWsId(headers, queryWsId);
     return this.googleSheetsService.listConnections(workspacePublicId);
   }
 
   @Post('connections')
   @UseGuards(PlanLimitsGuard)
   @CheckPlanLimit('google_sheets')
-  createConnection(@Body() body: { workspacePublicId: string, formId: string, formName: string, numberId: string, numberLabel: string }) {
+  createConnection(
+    @Headers() headers: Record<string, string> = {},
+    @Body() body: { workspacePublicId?: string; formId: string; formName: string; numberId: string; numberLabel: string },
+  ) {
+    const workspacePublicId = body.workspacePublicId || this.extractWsId(headers);
     return this.googleSheetsService.createConnection(
-      body.workspacePublicId,
+      workspacePublicId,
       body.formId,
       body.formName,
       body.numberId,
@@ -53,7 +84,12 @@ export class GoogleSheetsController {
   }
 
   @Delete('connections/:id')
-  deleteConnection(@Param('id') id: string, @Query('workspacePublicId') workspacePublicId: string) {
+  deleteConnection(
+    @Param('id') id: string,
+    @Headers() headers: Record<string, string> = {},
+    @Query('workspacePublicId') queryWsId?: string,
+  ) {
+    const workspacePublicId = this.extractWsId(headers, queryWsId);
     return this.googleSheetsService.deleteConnection(workspacePublicId, id);
   }
 }

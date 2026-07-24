@@ -208,16 +208,20 @@ export class WebhookIntegrationService {
     };
   }
 
-  async listForms() {
+  async listForms(workspaceId?: string) {
     const records = await this.prisma.formIntegration.findMany({
+      where: workspaceId
+        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
+        : undefined,
       orderBy: { updatedAt: 'desc' },
     });
 
     return records.map((record) => this.toFormResponse(record));
   }
 
-  async listWebhookEvents() {
+  async listWebhookEvents(workspaceId?: string) {
     const records = await this.prisma.webhookEvent.findMany({
+      where: workspaceId ? { workspacePublicId: workspaceId } : undefined,
       orderBy: { receivedAt: 'desc' },
     });
 
@@ -227,8 +231,9 @@ export class WebhookIntegrationService {
     }));
   }
 
-  async listFlowEvents() {
+  async listFlowEvents(workspaceId?: string) {
     const records = await this.prisma.flowEvent.findMany({
+      where: workspaceId ? { workspacePublicId: workspaceId } : undefined,
       orderBy: { occurredAt: 'desc' },
     });
 
@@ -239,8 +244,11 @@ export class WebhookIntegrationService {
     }));
   }
 
-  async listSubmissions() {
+  async listSubmissions(workspaceId?: string) {
     const records = await this.prisma.flowSubmission.findMany({
+      where: workspaceId
+        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
+        : undefined,
       orderBy: { submittedAt: 'desc' },
     });
 
@@ -373,8 +381,11 @@ export class WebhookIntegrationService {
     return this.toFormResponse(record);
   }
 
-  async listSends() {
+  async listSends(workspaceId?: string) {
     const records = await this.prisma.flowSend.findMany({
+      where: workspaceId
+        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
+        : undefined,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -417,8 +428,11 @@ export class WebhookIntegrationService {
     return this.toLegacyFlowTokenResponse(await this.findSendById(send.sendId));
   }
 
-  async listFlowTokens() {
+  async listFlowTokens(workspaceId?: string) {
     const records = await this.prisma.flowSend.findMany({
+      where: workspaceId
+        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
+        : undefined,
       orderBy: { createdAt: 'desc' },
     });
 
