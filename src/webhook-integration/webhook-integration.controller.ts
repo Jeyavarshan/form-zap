@@ -13,7 +13,7 @@ import type {
 export class WebhookIntegrationController {
   constructor(
     private readonly webhookIntegrationService: WebhookIntegrationService,
-  ) {}
+  ) { }
 
   @Get('config')
   getConfig(@Query('workspacePublicId') workspacePublicId?: string) {

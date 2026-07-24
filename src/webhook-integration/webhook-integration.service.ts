@@ -1035,15 +1035,15 @@ export class WebhookIntegrationService {
         submittedAt: this.toDate(event.occurredAt),
       },
     });
-    
+
     // Attempt to append to Google Sheets
     // The numberId is not explicitly tied to the submission but we can pass a dummy string 
     // or let googleSheetsService search by formId instead. 
     // In google-sheets.service.ts, we updated appendRow to search just by formId and workspacePublicId.
     this.googleSheetsService.appendRow(
-      form.workspacePublicId, 
-      form.formId, 
-      '', 
+      form.workspacePublicId,
+      form.formId,
+      '',
       [submission.id, submission.contactPhone || 'Unknown', submission.submittedAt.toISOString(), JSON.stringify(event.answers)]
     ).catch(e => console.error('Error appending to Google Sheets', e));
 
