@@ -12,11 +12,8 @@ export class WalletService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async ensureWorkspace(workspaceIdOrPublicId: string) {
-    const rawId = (workspaceIdOrPublicId || '').trim();
-    if (!rawId) {
-      throw new BadRequestException('Workspace ID is required');
-    }
+  async ensureWorkspace(workspaceIdOrPublicId?: string) {
+    const rawId = (workspaceIdOrPublicId || '').trim() || 'default_workspace';
 
     let workspace = await this.prisma.workspace.findFirst({
       where: {

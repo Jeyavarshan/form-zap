@@ -41,9 +41,9 @@ export class SubscriptionService {
     });
   }
 
-  async getStatus(workspaceId: string) {
-    if (!workspaceId) throw new BadRequestException('Workspace ID required');
-    const workspace = await this.walletService.ensureWorkspace(workspaceId);
+  async getStatus(workspaceId?: string) {
+    const targetId = (workspaceId || '').trim() || 'default_workspace';
+    const workspace = await this.walletService.ensureWorkspace(targetId);
     const wallet = await this.walletService.getBalance(workspace.id);
     
     // Usage stats

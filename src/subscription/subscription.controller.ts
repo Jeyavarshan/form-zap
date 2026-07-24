@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Headers, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Headers, Query, HttpCode } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
 
 @Controller('subscription')
@@ -11,13 +11,24 @@ export class SubscriptionController {
   }
 
   @Get('status')
-  getStatus(@Headers('x-workspace-id') workspaceId: string) {
-    return this.subscriptionService.getStatus(workspaceId);
+  getStatus(
+    @Headers('x-workspace-id') headerWsId?: string,
+    @Headers('x-workspace-public-id') headerPublicId?: string,
+    @Query('workspaceId') queryWsId?: string,
+    @Query('workspacePublicId') queryPublicId?: string,
+  ) {
+    const wsId = headerWsId || headerPublicId || queryWsId || queryPublicId || 'default_workspace';
+    return this.subscriptionService.getStatus(wsId);
   }
 
   @Post('create-order')
-  createOrder(@Body('workspaceId') workspaceId: string, @Body('planId') planId: string) {
-    return this.subscriptionService.createOrder(workspaceId, planId);
+  createOrder(
+    @Body('workspaceId') bodyWsId?: string,
+    @Headers('x-workspace-id') headerWsId?: string,
+    @Body('planId') planId?: string,
+  ) {
+    const wsId = bodyWsId || headerWsId || 'default_workspace';
+    return this.subscriptionService.createOrder(wsId, planId || 'spark_monthly_inr');
   }
 
   @Post('verify-payment')
