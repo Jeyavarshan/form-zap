@@ -1,10 +1,15 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WalletService } from '../../wallet/wallet.service';
 
 @Injectable()
 export class PlanLimitsGuard implements CanActivate {
-  constructor(private reflector: Reflector, private prisma: PrismaService) {}
+  constructor(
+    private reflector: Reflector,
+    private prisma: PrismaService,
+    private walletService: WalletService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredFeature = this.reflector.get<string>('plan_limit', context.getHandler());
@@ -15,36 +20,13 @@ export class PlanLimitsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const workspaceId = request.headers['x-workspace-id'] || request.body?.workspaceId || request.query?.workspaceId;
     const workspacePublicId = request.headers['x-workspace-public-id'] || request.body?.workspacePublicId || request.query?.workspacePublicId;
+    const targetId = workspaceId || workspacePublicId;
 
-    if (!workspaceId && !workspacePublicId) {
+    if (!targetId) {
       throw new ForbiddenException('Workspace ID or Public ID is required for this action');
     }
 
-    const includeOptions = {
-      subscriptions: {
-        where: { status: 'ACTIVE' },
-        include: { plan: true },
-        orderBy: { createdAt: 'desc' as const },
-        take: 1
-      }
-    };
-
-    let workspace;
-    if (workspaceId) {
-      workspace = await this.prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        include: includeOptions
-      });
-    } else {
-      workspace = await this.prisma.workspace.findUnique({
-        where: { publicId: workspacePublicId },
-        include: includeOptions
-      });
-    }
-
-    if (!workspace) {
-      throw new ForbiddenException('Workspace not found');
-    }
+    const workspace = await this.walletService.ensureWorkspace(targetId);
 
     // Default to Free plan limits if no active subscription
     const plan = workspace.subscriptions.length > 0 

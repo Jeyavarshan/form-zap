@@ -12,9 +12,62 @@ export class WalletService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async ensureWorkspace(workspaceIdOrPublicId: string) {
+    const rawId = (workspaceIdOrPublicId || '').trim();
+    if (!rawId) {
+      throw new BadRequestException('Workspace ID is required');
+    }
+
+    let workspace = await this.prisma.workspace.findFirst({
+      where: {
+        OR: [{ id: rawId }, { publicId: rawId }],
+      },
+      include: {
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          include: { plan: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!workspace) {
+      workspace = await this.prisma.workspace.create({
+        data: {
+          id: rawId,
+          publicId: rawId,
+          name: `Workspace ${rawId}`,
+          planName: 'free_monthly_inr',
+          aiCreditsCount: 3,
+        },
+        include: {
+          subscriptions: {
+            where: { status: 'ACTIVE' },
+            include: { plan: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      await this.prisma.walletTransaction.create({
+        data: {
+          workspaceId: workspace.id,
+          type: 'plan_grant',
+          amount: 3,
+          metadata: { isLifetime: true, reason: 'auto_provisioned' },
+        },
+      });
+    }
+
+    return workspace;
+  }
+
   async getBalance(workspaceId: string) {
+    const workspace = await this.ensureWorkspace(workspaceId);
     const transactions = await this.prisma.walletTransaction.findMany({
-      where: { workspaceId },
+      where: { workspaceId: workspace.id },
     });
 
     let planCredits = 0;
@@ -39,9 +92,13 @@ export class WalletService {
   }
 
   async deductCredits(workspaceId: string, inputTokens: number, outputTokens: number, metadata: any = {}) {
-    // 1. Calculate cost
-    // if tokens not provided, default to MAX_CREDITS_PER_GEN
-    let creditsToCharge = this.MAX_CREDITS_PER_GEN;
+    const workspace = await this.ensureWorkspace(workspaceId);
+    
+    // Ensure initial plan credits are granted if first time
+    await this.refreshPlanCreditsIfNeeded(workspace.id);
+
+    // 1. Calculate cost - default to 1 credit if tokens not provided
+    let creditsToCharge = 1;
 
     if (inputTokens > 0 || outputTokens > 0) {
       const costInr = ((inputTokens / 1000) * this.INPUT_COST_PER_K_TOKEN + (outputTokens / 1000) * this.OUTPUT_COST_PER_K_TOKEN) * this.USD_TO_INR;
@@ -52,7 +109,7 @@ export class WalletService {
     creditsToCharge = Math.max(1, creditsToCharge);
 
     // 2. Check balance
-    const balance = await this.getBalance(workspaceId);
+    const balance = await this.getBalance(workspace.id);
     if (balance.totalBalance < creditsToCharge) {
       throw new BadRequestException('ai_credits_exhausted');
     }
@@ -71,7 +128,7 @@ export class WalletService {
     // 4. Create transaction
     const tx = await this.prisma.walletTransaction.create({
       data: {
-        workspaceId,
+        workspaceId: workspace.id,
         type: 'consume',
         amount: -creditsToCharge,
         metadata: {
@@ -85,7 +142,7 @@ export class WalletService {
     });
 
     // Update workspace cache
-    await this.updateWorkspaceCache(workspaceId, balance.totalBalance - creditsToCharge);
+    await this.updateWorkspaceCache(workspace.id, balance.totalBalance - creditsToCharge);
 
     return {
       charged: creditsToCharge,
@@ -95,19 +152,7 @@ export class WalletService {
   }
 
   async refreshPlanCreditsIfNeeded(workspaceId: string) {
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      include: {
-        subscriptions: {
-          where: { status: 'ACTIVE' },
-          include: { plan: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    });
-
-    if (!workspace) return;
+    const workspace = await this.ensureWorkspace(workspaceId);
 
     let monthlyCreditsAllowed = 3; // Default free lifetime
     let isLifetime = true;

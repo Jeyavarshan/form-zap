@@ -58,14 +58,30 @@ async function main() {
 
   await prisma.workspace.upsert({
     where: { publicId: 'workspace_poc' },
-    update: {},
+    update: { planName: 'free_monthly_inr' },
     create: {
       id: 'workspace_poc',
       publicId: 'workspace_poc',
       name: 'Default Workspace',
-      planName: 'Free',
+      planName: 'free_monthly_inr',
+      aiCreditsCount: 3,
     },
   });
+
+  const existingGrant = await prisma.walletTransaction.findFirst({
+    where: { workspaceId: 'workspace_poc', type: 'plan_grant' },
+  });
+
+  if (!existingGrant) {
+    await prisma.walletTransaction.create({
+      data: {
+        workspaceId: 'workspace_poc',
+        type: 'plan_grant',
+        amount: 3,
+        metadata: { isLifetime: true },
+      },
+    });
+  }
 
   console.log('Seed completed.');
 }

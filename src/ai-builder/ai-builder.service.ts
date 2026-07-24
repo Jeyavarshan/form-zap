@@ -30,6 +30,9 @@ export interface AiGenerationResult {
   validationRules: number;
   suggestions: string[];
   flowJson: Record<string, unknown>;
+  inputTokens?: number;
+  outputTokens?: number;
+  creditsCharged?: number;
 }
 
 @Injectable()
@@ -46,9 +49,17 @@ export class AiBuilderService {
 
   async generateForm(input: AiGenerationInput): Promise<AiGenerationResult> {
     const { prompt, settings = {} } = input;
+    const workspace = await this.walletService.ensureWorkspace(input.workspaceId || 'ws_default');
+    const workspaceId = workspace.id;
 
     if (!prompt || prompt.trim().length < 5) {
       throw new BadRequestException('Prompt is too short. Please describe your form in more detail.');
+    }
+
+    // Pre-check balance before calling Gemini API
+    const balance = await this.walletService.getBalance(workspaceId);
+    if (balance.totalBalance < 1) {
+      throw new BadRequestException('ai_credits_exhausted');
     }
 
     const model = this.genAI.getGenerativeModel({
@@ -68,13 +79,19 @@ export class AiBuilderService {
     const inputTokens = usage?.promptTokenCount || 0;
     const outputTokens = usage?.candidatesTokenCount || 0;
     
-    await this.walletService.deductCredits(input.workspaceId, inputTokens, outputTokens, { action: 'ai_form_generation' });
+    const deductResult = await this.walletService.deductCredits(workspaceId, inputTokens, outputTokens, { action: 'ai_form_generation' });
 
     console.log('--- RAW GEMINI RESPONSE ---');
     console.log(responseText);
     console.log('---------------------------');
 
-    return this.parseAndValidateResponse(responseText);
+    const parsed = this.parseAndValidateResponse(responseText);
+    return {
+      ...parsed,
+      inputTokens,
+      outputTokens,
+      creditsCharged: deductResult.charged,
+    };
   }
 
   private buildSystemPrompt(userPrompt: string, settings: AiGenerationSettings): string {

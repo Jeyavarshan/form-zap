@@ -43,30 +43,14 @@ export class SubscriptionService {
 
   async getStatus(workspaceId: string) {
     if (!workspaceId) throw new BadRequestException('Workspace ID required');
-    await this.walletService.refreshPlanCreditsIfNeeded(workspaceId);
-
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      include: {
-        subscriptions: {
-          where: { status: 'ACTIVE' },
-          include: { plan: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    });
-
-    if (!workspace) throw new NotFoundException('Workspace not found');
-
-    const wallet = await this.walletService.getBalance(workspaceId);
+    const workspace = await this.walletService.ensureWorkspace(workspaceId);
+    const wallet = await this.walletService.getBalance(workspace.id);
     
     // Usage stats
-    const activeFlows = await this.prisma.formIntegration.count({ where: { workspaceId } });
+    const activeFlows = await this.prisma.formIntegration.count({ where: { workspaceId: workspace.id } });
     const monthlyResponses = await this.prisma.flowSubmission.count({ 
-      where: { workspaceId, submittedAt: { gte: new Date(new Date().setDate(1)) } } // Simple current month logic
+      where: { workspaceId: workspace.id, submittedAt: { gte: new Date(new Date().setDate(1)) } }
     });
-    // Assuming API Keys are not modeled explicitly yet, returning 0
     const apiKeys = 0;
 
     let planId = 'free';
@@ -93,13 +77,7 @@ export class SubscriptionService {
   }
 
   async createOrder(workspaceId: string, planId: string) {
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-    });
-
-    if (!workspace) {
-      throw new NotFoundException('Workspace not found');
-    }
+    const workspace = await this.walletService.ensureWorkspace(workspaceId);
 
     let billingAmount = 0;
     let currency = 'INR';

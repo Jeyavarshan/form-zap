@@ -8,6 +8,7 @@ import { Prisma, type FlowEvent as PrismaFlowEvent, type FlowSend as PrismaFlowS
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
+import { WalletService } from '../wallet/wallet.service';
 
 
 export type FlowPublishStatus =
@@ -173,8 +174,8 @@ export class WebhookIntegrationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly googleSheetsService: GoogleSheetsService,
+    private readonly walletService: WalletService,
   ) { }
-
 
   getWebhookConfig(inputWorkspacePublicId?: string) {
     const workspacePublicId =
@@ -251,10 +252,10 @@ export class WebhookIntegrationService {
   }
 
   async saveFormMapping(input: SaveFormMappingInput = {}) {
-    const workspaceId = this.clean(input.workspaceId) || DEFAULT_WORKSPACE_ID;
-    const workspacePublicId =
-      this.clean(input.workspacePublicId) ||
-      this.createWorkspacePublicId(workspaceId);
+    const rawWsId = this.clean(input.workspaceId) || this.clean(input.workspacePublicId) || 'default_workspace';
+    const ws = await this.walletService.ensureWorkspace(rawWsId);
+    const workspaceId = ws.id;
+    const workspacePublicId = ws.publicId;
     const formId = this.clean(input.formId) || DEFAULT_FORM_ID;
     const provider = this.normalizeProvider(input.provider);
     const existing = await this.prisma.formIntegration.findUnique({
@@ -262,18 +263,15 @@ export class WebhookIntegrationService {
     });
 
     if (!existing) {
-      const ws = await this.prisma.workspace.findUnique({ where: { publicId: workspacePublicId } });
-      if (ws) {
-        const plan = await this.prisma.plan.findUnique({ where: { name: ws.planName } });
-        const maxFlows = plan?.maxFlows ?? 1;
-        if (ws.flowsCount >= maxFlows) {
-          throw new BadRequestException(`Flow limit reached (${maxFlows}). Please upgrade your plan.`);
-        }
-        await this.prisma.workspace.update({
-          where: { publicId: workspacePublicId },
-          data: { flowsCount: { increment: 1 } },
-        });
+      const plan = await this.prisma.plan.findUnique({ where: { name: ws.planName } });
+      const maxFlows = plan?.maxFlows ?? 1;
+      if (ws.flowsCount >= maxFlows) {
+        throw new BadRequestException(`Flow limit reached (${maxFlows}). Please upgrade your plan.`);
       }
+      await this.prisma.workspace.update({
+        where: { publicId: workspacePublicId },
+        data: { flowsCount: { increment: 1 } },
+      });
     }
     const flowId = this.clean(input.flowId) || existing?.flowId || '';
     const requestedPublishStatus = this.normalizePublishStatus(
