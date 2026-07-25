@@ -1074,54 +1074,44 @@ export class WebhookIntegrationService {
   }
 
   private async findMappedForm(event: NormalizedFlowEvent) {
+    const wsId = (event.workspacePublicId || '').trim();
+
+    // 1. Match by flowToken
     if (event.flowToken) {
       const send = await this.prisma.flowSend.findUnique({
         where: { flowToken: event.flowToken },
       });
 
       if (send) {
-        const form = await this.prisma.formIntegration.findUnique({
+        const form = await this.prisma.formIntegration.findFirst({
           where: {
-            workspaceId_formId: {
-              workspaceId: send.workspaceId,
-              formId: send.formId,
-            },
+            OR: [
+              { workspaceId: send.workspaceId, formId: send.formId },
+              { workspacePublicId: send.workspacePublicId, formId: send.formId },
+            ],
           },
         });
-
-        if (form) {
-          return this.toFormRecord(form);
-        }
+        if (form) return this.toFormRecord(form);
       }
     }
 
+    // 2. Match by flowId
     if (event.flowId) {
-      const exactProviderForm = await this.prisma.formIntegration.findUnique({
+      const formByFlowId = await this.prisma.formIntegration.findFirst({
         where: {
-          workspacePublicId_provider_flowId: {
-            workspacePublicId: event.workspacePublicId,
-            provider: event.provider,
-            flowId: event.flowId,
-          },
-        },
-      });
-
-      if (exactProviderForm) {
-        return this.toFormRecord(exactProviderForm);
-      }
-
-      const fallbackForm = await this.prisma.formIntegration.findFirst({
-        where: {
-          workspacePublicId: event.workspacePublicId,
           flowId: event.flowId,
+          ...(wsId ? { OR: [{ workspaceId: wsId }, { workspacePublicId: wsId }] } : {}),
         },
       });
+      if (formByFlowId) return this.toFormRecord(formByFlowId);
 
-      if (fallbackForm) {
-        return this.toFormRecord(fallbackForm);
-      }
+      const globalFormByFlowId = await this.prisma.formIntegration.findFirst({
+        where: { flowId: event.flowId },
+      });
+      if (globalFormByFlowId) return this.toFormRecord(globalFormByFlowId);
     }
 
+    // 3. Match by form_id in payload answers
     const formIdFromAnswers =
       this.clean(event.answers?.form_id as string) ||
       this.clean(event.answers?.formId as string);
@@ -1129,14 +1119,32 @@ export class WebhookIntegrationService {
     if (formIdFromAnswers) {
       const formByFormId = await this.prisma.formIntegration.findFirst({
         where: {
-          workspacePublicId: event.workspacePublicId,
           formId: formIdFromAnswers,
+          ...(wsId ? { OR: [{ workspaceId: wsId }, { workspacePublicId: wsId }] } : {}),
         },
       });
+      if (formByFormId) return this.toFormRecord(formByFormId);
 
-      if (formByFormId) {
-        return this.toFormRecord(formByFormId);
+      const globalForm = await this.prisma.formIntegration.findFirst({
+        where: { formId: formIdFromAnswers },
+      });
+      if (globalForm) return this.toFormRecord(globalForm);
+    }
+
+    // 4. Smart Fallback: If workspace has exactly 1 form, map to it
+    if (wsId) {
+      const workspaceForms = await this.prisma.formIntegration.findMany({
+        where: { OR: [{ workspaceId: wsId }, { workspacePublicId: wsId }] },
+      });
+      if (workspaceForms.length === 1) {
+        return this.toFormRecord(workspaceForms[0]);
       }
+    }
+
+    // 5. Global Fallback: If only 1 form total exists in DB
+    const allForms = await this.prisma.formIntegration.findMany({ take: 2 });
+    if (allForms.length === 1) {
+      return this.toFormRecord(allForms[0]);
     }
 
     return undefined;
