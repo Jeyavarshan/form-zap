@@ -1125,25 +1125,36 @@ export class WebhookIntegrationService {
       });
       if (formByFormId) return this.toFormRecord(formByFormId);
 
-      const globalForm = await this.prisma.formIntegration.findFirst({
-        where: { formId: formIdFromAnswers },
+      const fuzzyForm = await this.prisma.formIntegration.findFirst({
+        where: {
+          ...(wsId ? { OR: [{ workspaceId: wsId }, { workspacePublicId: wsId }] } : {}),
+          OR: [
+            { formId: { contains: formIdFromAnswers } },
+            { formId: formIdFromAnswers },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
       });
-      if (globalForm) return this.toFormRecord(globalForm);
+      if (fuzzyForm) return this.toFormRecord(fuzzyForm);
     }
 
-    // 4. Smart Fallback: If workspace has exactly 1 form, map to it
+    // 4. Smart Workspace Fallback: Map to the latest form in the target workspace
     if (wsId) {
       const workspaceForms = await this.prisma.formIntegration.findMany({
         where: { OR: [{ workspaceId: wsId }, { workspacePublicId: wsId }] },
+        orderBy: { updatedAt: 'desc' },
       });
-      if (workspaceForms.length === 1) {
+      if (workspaceForms.length > 0) {
         return this.toFormRecord(workspaceForms[0]);
       }
     }
 
-    // 5. Global Fallback: If only 1 form total exists in DB
-    const allForms = await this.prisma.formIntegration.findMany({ take: 2 });
-    if (allForms.length === 1) {
+    // 5. Global Fallback: Map to newest form total if only 1 exists
+    const allForms = await this.prisma.formIntegration.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
+    });
+    if (allForms.length > 0) {
       return this.toFormRecord(allForms[0]);
     }
 
