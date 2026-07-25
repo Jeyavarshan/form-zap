@@ -264,7 +264,7 @@ export class WebhookIntegrationService {
     const ws = await this.walletService.ensureWorkspace(rawWsId);
     const workspaceId = ws.id;
     const workspacePublicId = ws.publicId;
-    const formId = this.clean(input.formId) || DEFAULT_FORM_ID;
+    const formId = this.clean(input.formId) || `form_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const provider = this.normalizeProvider(input.provider);
     const existing = await this.prisma.formIntegration.findUnique({
       where: { workspaceId_formId: { workspaceId, formId } },
