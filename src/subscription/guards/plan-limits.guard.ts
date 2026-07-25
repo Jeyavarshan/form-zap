@@ -50,9 +50,11 @@ export class PlanLimitsGuard implements CanActivate {
         throw new ForbiddenException({ reason: 'advanced_flow_components', message: 'Upgrade to Grow plan or higher' });
       }
     } else if (requiredFeature === 'active_flows_limit') {
-      const activeFlowsCount = await this.prisma.formIntegration.count({ where: { workspaceId: workspace.id } });
+      const activeFlowsCount = await this.prisma.formIntegration.count({
+        where: { OR: [{ workspaceId: workspace.id }, { workspacePublicId: workspace.publicId }] },
+      });
       if (activeFlowsCount >= plan.maxFlows) {
-        throw new ForbiddenException({ reason: 'active_flows_limit', message: 'Active flows limit reached' });
+        throw new ForbiddenException({ reason: 'active_flows_limit', message: `Active flows limit reached (${plan.maxFlows}). Upgrade to create more.` });
       }
     } else if (requiredFeature === 'api_keys_limit') {
       if (plan.maxApiKeys === 0) {

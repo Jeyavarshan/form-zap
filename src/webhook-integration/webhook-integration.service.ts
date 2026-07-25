@@ -209,10 +209,11 @@ export class WebhookIntegrationService {
   }
 
   async listForms(workspaceId?: string) {
+    const cleanId = (workspaceId || '').trim();
+    if (!cleanId) return [];
+
     const records = await this.prisma.formIntegration.findMany({
-      where: workspaceId
-        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
-        : undefined,
+      where: { OR: [{ workspaceId: cleanId }, { workspacePublicId: cleanId }] },
       orderBy: { updatedAt: 'desc' },
     });
 
@@ -220,8 +221,11 @@ export class WebhookIntegrationService {
   }
 
   async listWebhookEvents(workspaceId?: string) {
+    const cleanId = (workspaceId || '').trim();
+    if (!cleanId) return [];
+
     const records = await this.prisma.webhookEvent.findMany({
-      where: workspaceId ? { workspacePublicId: workspaceId } : undefined,
+      where: { workspacePublicId: cleanId },
       orderBy: { receivedAt: 'desc' },
     });
 
@@ -232,8 +236,11 @@ export class WebhookIntegrationService {
   }
 
   async listFlowEvents(workspaceId?: string) {
+    const cleanId = (workspaceId || '').trim();
+    if (!cleanId) return [];
+
     const records = await this.prisma.flowEvent.findMany({
-      where: workspaceId ? { workspacePublicId: workspaceId } : undefined,
+      where: { workspacePublicId: cleanId },
       orderBy: { occurredAt: 'desc' },
     });
 
@@ -245,10 +252,11 @@ export class WebhookIntegrationService {
   }
 
   async listSubmissions(workspaceId?: string) {
+    const cleanId = (workspaceId || '').trim();
+    if (!cleanId) return [];
+
     const records = await this.prisma.flowSubmission.findMany({
-      where: workspaceId
-        ? { OR: [{ workspaceId }, { workspacePublicId: workspaceId }] }
-        : undefined,
+      where: { OR: [{ workspaceId: cleanId }, { workspacePublicId: cleanId }] },
       orderBy: { submittedAt: 'desc' },
     });
 
@@ -271,14 +279,17 @@ export class WebhookIntegrationService {
     });
 
     if (!existing) {
+      const activeFlowsCount = await this.prisma.formIntegration.count({
+        where: { OR: [{ workspaceId }, { workspacePublicId }] },
+      });
       const plan = await this.prisma.plan.findUnique({ where: { name: ws.planName } });
-      const maxFlows = plan?.maxFlows ?? 1;
-      if (ws.flowsCount >= maxFlows) {
+      const maxFlows = plan?.maxFlows ?? 3;
+      if (activeFlowsCount >= maxFlows) {
         throw new BadRequestException(`Flow limit reached (${maxFlows}). Please upgrade your plan.`);
       }
       await this.prisma.workspace.update({
-        where: { publicId: workspacePublicId },
-        data: { flowsCount: { increment: 1 } },
+        where: { id: workspaceId },
+        data: { flowsCount: activeFlowsCount + 1 },
       });
     }
     const flowId = this.clean(input.flowId) || existing?.flowId || '';
