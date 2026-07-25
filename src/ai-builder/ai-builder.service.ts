@@ -105,61 +105,189 @@ export class AiBuilderService {
       includeApiExchange = false,
     } = settings;
 
-    const screenCount = parseInt(screens, 10) || 4;
+    const screenCount = Math.max(1, parseInt(screens, 10) || 4);
 
-    return `You are an expert WhatsApp Flow form designer. Generate a valid WhatsApp Flow JSON (version 6.3) based on the user's request.
+    return `# SYSTEM INSTRUCTIONS FOR GEMINI / AI FORM BUILDER
+
+You are an expert AI Assistant specializing in generating official Meta WhatsApp Flow JSON schemas (v6.3 specification). Your goal is to convert user requirements into valid, production-ready WhatsApp Flow JSON objects compatible with Meta Business Platform.
 
 USER REQUEST: "${userPrompt}"
-
-GENERATION SETTINGS:
 - Form Type: ${formType}
-- Number of screens: ${screenCount}
+- Target Screens Count: ${screenCount}
 - Language: ${language}
 - Tone: ${tone}
 - Include consent checkbox: ${includeConsent}
 - Include confirmation screen: ${includeConfirmation}
 - Include API data exchange: ${includeApiExchange}
 
-WHATSAPP FLOW JSON RULES:
-1. Version must be "6.3"
-2. data_api_version must be "3.0"
-3. Each screen needs: id (UPPER_SNAKE_CASE), title, layout with type "SingleColumnLayout"
-4. Valid component types: TextHeading, TextSubheading, TextBody, TextInput, TextArea, CheckboxGroup, RadioButtonsGroup, Dropdown, DatePicker, Image, Footer
-5. Footer is REQUIRED on every screen - last screen uses on-click-action name "complete", others use "navigate"
-6. For navigate: include "next": {"name": "NEXT_SCREEN_ID"} in on-click-action
-7. TextInput requires: label, input-type (text/number/email/phone/password), name (unique)
-8. Dropdown requires: label, name, data-source array with id/title pairs
-9. RadioButtonsGroup requires: label, name, data-source array with id/title pairs
-10. CheckboxGroup requires: label, name, data-source array with id/title pairs
-11. DatePicker requires: label, name
-12. routing_model maps each screen ID to an array of next screen IDs
-13. The last screen must have "terminal": true
-14. All field "name" values must be unique across all screens
+---
 
-Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra text):
+## CRITICAL METADATA RULE
+DO NOT include root-level "name" or "categories" properties in the flowJson object. The JSON schema must strictly match Meta's expected Flow structure.
+
+---
+
+## METADATA & ROOT STRUCTURE REQUIREMENT
+Every valid WhatsApp Flow JSON MUST follow this exact root structure inside flowJson:
+
+\`\`\`json
+{
+  "version": "6.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SCREEN_A": ["SCREEN_B"],
+    "SCREEN_B": []
+  },
+  "screens": [
+    {
+      "id": "SCREEN_A",
+      "title": "Screen Title",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": []
+      }
+    }
+  ]
+}
+\`\`\`
+
+---
+
+## ROUTING & NAVIGATION RULES
+1. **Screen IDs**: Must be uppercase strings (e.g. SCREEN_A, APPLICANT_DETAILS, LOAN_DETAILS, CONFIRMATION_SCREEN).
+2. **Terminal Screen**: The last screen MUST point to an empty array [] in routing_model.
+3. **On-Click Actions**: Every navigate action MUST explicitly include "type": "screen" in the next block:
+   \`\`\`json
+   "on-click-action": {
+     "name": "navigate",
+     "next": {
+       "type": "screen",
+       "name": "NEXT_SCREEN_ID"
+     }
+   }
+   \`\`\`
+4. **Footer / Complete Action**: The final screen's submit button MUST trigger data payload completion:
+   \`\`\`json
+   "on-click-action": {
+     "name": "complete",
+     "payload": {
+       "form_id": "generated_form",
+       "flow_token": "\${flow_token}"
+     }
+   }
+   \`\`\`
+
+---
+
+## SUPPORTED COMPONENTS & SYNTAX
+
+### 1. Layout Header & Typography
+- **TextHeading**: { "type": "TextHeading", "text": "Header Title" }
+- **TextSubheading**: { "type": "TextSubheading", "text": "Subheading text" }
+- **TextBody**: { "type": "TextBody", "text": "Body description here" }
+
+### 2. Inputs
+- **TextInput**:
+  {
+    "type": "TextInput",
+    "name": "full_name",
+    "label": "Full Legal Name",
+    "input-type": "text",
+    "required": true
+  }
+  Allowed input-type values: "text", "phone", "email", "number", "password", "time".
+
+- **TextArea**:
+  {
+    "type": "TextArea",
+    "name": "comments",
+    "label": "Additional Comments",
+    "required": false
+  }
+
+### 3. Selectors
+- **Dropdown**:
+  {
+    "type": "Dropdown",
+    "name": "employment_type",
+    "label": "Employment Type",
+    "required": true,
+    "data-source": [
+      { "id": "salaried", "title": "Salaried" },
+      { "id": "self_employed", "title": "Self Employed" }
+    ]
+  }
+
+- **RadioButtonsGroup**:
+  {
+    "type": "RadioButtonsGroup",
+    "name": "loan_term",
+    "label": "Loan Term",
+    "required": true,
+    "data-source": [
+      { "id": "12", "title": "12 Months" },
+      { "id": "24", "title": "24 Months" }
+    ]
+  }
+
+- **CheckboxGroup**:
+  {
+    "type": "CheckboxGroup",
+    "name": "preferences",
+    "label": "Select Preferences",
+    "required": false,
+    "data-source": [
+      { "id": "email_updates", "title": "Email Updates" },
+      { "id": "sms_updates", "title": "SMS Updates" }
+    ]
+  }
+
+- **DatePicker**:
+  {
+    "type": "DatePicker",
+    "name": "date_of_birth",
+    "label": "Date of Birth",
+    "required": true
+  }
+
+### 4. Buttons & Footer
+- **Footer Button**:
+  {
+    "type": "Footer",
+    "label": "Continue",
+    "on-click-action": {
+      "name": "navigate",
+      "next": {
+        "type": "screen",
+        "name": "NEXT_SCREEN_ID"
+      }
+    }
+  }
+
+---
+
+## OUTPUT FORMAT REQUIREMENTS
+Return a single JSON object containing:
 {
   "summary": "Brief description of the generated form",
   "screens": [
-    { "name": "Screen Name", "fields": 3 }
+    { "name": "Screen 1 Title", "fields": 3 }
   ],
-  "fields": 12,
+  "fields": 10,
   "validationRules": 4,
   "suggestions": [
     "Improvement suggestion 1",
-    "Improvement suggestion 2",
-    "Improvement suggestion 3"
+    "Improvement suggestion 2"
   ],
   "flowJson": {
     "version": "6.3",
     "data_api_version": "3.0",
-    "name": "Form Name",
-    "categories": ["APPOINTMENT_BOOKING"],
     "routing_model": {},
     "screens": []
   }
 }
 
-IMPORTANT: The flowJson must be a complete, valid WhatsApp Flow JSON. Generate real fields relevant to the user's request. Do not use placeholder content.`;
+Return ONLY valid raw JSON. Do not include markdown code block backticks outside of requested formatted JSON responses.`;
   }
 
   private parseAndValidateResponse(responseText: string): AiGenerationResult {
@@ -167,7 +295,6 @@ IMPORTANT: The flowJson must be a complete, valid WhatsApp Flow JSON. Generate r
     let cleaned = '';
 
     try {
-      // Strip any accidental markdown fences if present
       cleaned = responseText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -178,19 +305,143 @@ IMPORTANT: The flowJson must be a complete, valid WhatsApp Flow JSON. Generate r
     } catch (e) {
       console.error('JSON Parse Error:', e);
       console.error('Cleaned string that failed to parse:', cleaned || responseText);
-      throw new InternalServerErrorException('AI returned an invalid response. Please try again.');
+      throw new InternalServerErrorException('AI returned an invalid response format. Please try again.');
     }
 
-    // Basic validation
     if (!parsed.flowJson || !parsed.summary || !Array.isArray(parsed.screens)) {
       throw new InternalServerErrorException('AI response is missing required fields. Please try again.');
     }
 
-    // Ensure screens array matches flowJson screens
-    const flowScreens = (parsed.flowJson.screens as Array<{ id: string; title: string }>) || [];
-    if (parsed.screens.length === 0 && flowScreens.length > 0) {
-      parsed.screens = flowScreens.map((s) => ({ name: s.title || s.id, fields: 1 }));
-    }
+    const flowJson = parsed.flowJson as Record<string, any>;
+    flowJson.version = '6.3';
+    flowJson.data_api_version = '3.0';
+
+    // DO NOT include root-level name or categories properties
+    delete flowJson.name;
+    delete flowJson.categories;
+
+    const flowScreens = Array.isArray(flowJson.screens) ? flowJson.screens : [];
+    const validComponents = new Set([
+      'TextHeading',
+      'TextSubheading',
+      'TextBody',
+      'TextCaption',
+      'TextInput',
+      'TextArea',
+      'Dropdown',
+      'RadioButtonsGroup',
+      'CheckboxGroup',
+      'DatePicker',
+      'Image',
+      'Footer',
+    ]);
+    const validInputs = new Set(['text', 'number', 'email', 'phone', 'password', 'time']);
+
+    const routingModel: Record<string, string[]> = {};
+
+    flowScreens.forEach((screen: any, idx: number) => {
+      const isLast = idx === flowScreens.length - 1;
+      const screenId = (screen.id || `SCREEN_${String.fromCharCode(65 + idx)}`).toUpperCase();
+      screen.id = screenId;
+
+      if (!screen.layout || screen.layout.type !== 'SingleColumnLayout') {
+        screen.layout = { type: 'SingleColumnLayout', children: screen.layout?.children || [] };
+      }
+
+      if (isLast) {
+        screen.terminal = true;
+        routingModel[screenId] = [];
+      } else {
+        const nextId = (flowScreens[idx + 1]?.id || `SCREEN_${String.fromCharCode(66 + idx)}`).toUpperCase();
+        routingModel[screenId] = [nextId];
+      }
+
+      const children = Array.isArray(screen.layout.children) ? screen.layout.children : [];
+      let hasFooter = false;
+
+      screen.layout.children = children.filter((child: any) => {
+        if (!child || !child.type || !validComponents.has(child.type)) {
+          return false;
+        }
+
+        if (child.type === 'TextInput') {
+          if (!child['input-type'] || !validInputs.has(child['input-type'])) {
+            child['input-type'] = 'text';
+          }
+        }
+
+        if (['Dropdown', 'RadioButtonsGroup', 'CheckboxGroup'].includes(child.type)) {
+          if (!Array.isArray(child['data-source']) || child['data-source'].length === 0) {
+            child['data-source'] = [
+              { id: 'opt_1', title: 'Option 1' },
+              { id: 'opt_2', title: 'Option 2' },
+            ];
+          }
+        }
+
+        if (child.type === 'Footer') {
+          hasFooter = true;
+          if (isLast) {
+            child['on-click-action'] = {
+              name: 'complete',
+              payload: child['on-click-action']?.payload || {
+                form_id: 'generated_form',
+                flow_token: '${flow_token}',
+              },
+            };
+          } else {
+            const nextId = (flowScreens[idx + 1]?.id || `SCREEN_${String.fromCharCode(66 + idx)}`).toUpperCase();
+            child['on-click-action'] = {
+              name: 'navigate',
+              next: {
+                type: 'screen',
+                name: nextId,
+              },
+            };
+          }
+        }
+
+        return true;
+      });
+
+      if (!hasFooter) {
+        if (isLast) {
+          screen.layout.children.push({
+            type: 'Footer',
+            label: 'Submit',
+            'on-click-action': {
+              name: 'complete',
+              payload: {
+                form_id: 'generated_form',
+                flow_token: '${flow_token}',
+              },
+            },
+          });
+        } else {
+          const nextId = (flowScreens[idx + 1]?.id || `SCREEN_${String.fromCharCode(66 + idx)}`).toUpperCase();
+          screen.layout.children.push({
+            type: 'Footer',
+            label: 'Continue',
+            'on-click-action': {
+              name: 'navigate',
+              next: {
+                type: 'screen',
+                name: nextId,
+              },
+            },
+          });
+        }
+      }
+    });
+
+    flowJson.routing_model = routingModel;
+
+    parsed.screens = flowScreens.map((s: any) => ({
+      name: s.title || s.id,
+      fields: Array.isArray(s.layout?.children)
+        ? s.layout.children.filter((c: any) => c.type !== 'Footer' && !c.type.startsWith('Text')).length
+        : 1,
+    }));
 
     if (!parsed.suggestions) {
       parsed.suggestions = [];

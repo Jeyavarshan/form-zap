@@ -21,7 +21,7 @@ export class WalletService {
       },
       include: {
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'active'] } },
           include: { plan: true },
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -40,7 +40,7 @@ export class WalletService {
         },
         include: {
           subscriptions: {
-            where: { status: 'ACTIVE' },
+            where: { status: { in: ['ACTIVE', 'active'] } },
             include: { plan: true },
             orderBy: { createdAt: 'desc' },
             take: 1,

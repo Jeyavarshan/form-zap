@@ -12,21 +12,22 @@ export class SubscriptionController {
 
   @Get('status')
   getStatus(
-    @Headers('x-workspace-id') headerWsId?: string,
-    @Headers('x-workspace-public-id') headerPublicId?: string,
+    @Headers() headers: Record<string, string>,
     @Query('workspaceId') queryWsId?: string,
     @Query('workspacePublicId') queryPublicId?: string,
   ) {
-    const wsId = headerWsId || headerPublicId || queryWsId || queryPublicId || 'default_workspace';
+    const headerWsId = headers['x-workspace-id'] || headers['x-workspace-public-id'];
+    const wsId = headerWsId || queryWsId || queryPublicId || 'default_workspace';
     return this.subscriptionService.getStatus(wsId);
   }
 
   @Post('create-order')
   createOrder(
+    @Headers() headers: Record<string, string>,
     @Body('workspaceId') bodyWsId?: string,
-    @Headers('x-workspace-id') headerWsId?: string,
     @Body('planId') planId?: string,
   ) {
+    const headerWsId = headers['x-workspace-id'] || headers['x-workspace-public-id'];
     const wsId = bodyWsId || headerWsId || 'default_workspace';
     return this.subscriptionService.createOrder(wsId, planId || 'spark_monthly_inr');
   }
