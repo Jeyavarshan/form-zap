@@ -53,10 +53,10 @@ export class SubscriptionService {
     });
     const apiKeys = 0;
 
-    let planId = 'free';
+    let planId = (workspace.planName || 'free').toLowerCase().split('_')[0];
     let billingCycle = 'monthly';
 
-    if (workspace.subscriptions.length > 0) {
+    if (workspace.subscriptions && workspace.subscriptions.length > 0) {
       const activeSub = workspace.subscriptions[0];
       const parsedPlanId = activeSub.plan.name.split('_')[0]; // e.g. "spark_monthly_inr" -> "spark"
       planId = parsedPlanId;
